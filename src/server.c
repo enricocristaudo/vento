@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include "../include/server.h"
@@ -24,7 +25,7 @@ void *handle_client(void *arg) {
         char decoded_uri[256];
         url_decode(req.uri, decoded_uri);
 
-        printf("[%s] %s (Decoded: %s) %s\n", req.method, req.uri, decoded_uri, req.version);
+        printf("[%s] %s %s\n", req.method, decoded_uri, req.version);
 
         if (!is_safe_uri(decoded_uri)) {
             printf("WARNING: Blocked potential path traversal attack: %s\n", decoded_uri);
@@ -37,31 +38,46 @@ void *handle_client(void *arg) {
             write(client_fd, forbidden, strlen(forbidden));
         } else {
             char filepath[512] = "www";
-            if (strcmp(decoded_uri, "/") == 0) {
-                strcat(filepath, "/index.html");
-            } else {
-                strcat(filepath, decoded_uri);
+            strcat(filepath, decoded_uri);
+
+            struct stat path_stat;
+            int redirect = 0;
+            if (stat(filepath, &path_stat) == 0 && S_ISDIR(path_stat.st_mode)) {
+                if (filepath[strlen(filepath) - 1] != '/') {
+                    redirect = 1;
+                    char redirect_response[1024];
+                    snprintf(redirect_response, sizeof(redirect_response),
+                             "HTTP/1.1 301 Moved Permanently\r\n"
+                             "Location: %s/\r\n"
+                             "Content-Length: 0\r\n"
+                             "Connection: close\r\n\r\n", req.uri);
+                    write(client_fd, redirect_response, strlen(redirect_response));
+                } else {
+                    strcat(filepath, "index.html");
+                }
             }
 
-            int response_length = 0;
-            char *response = build_http_response(filepath, "200 OK", &response_length);
-
-            if (response != NULL) {
-                write(client_fd, response, response_length);
-                free(response);
-            } else {
-                response = build_http_response("www/404.html", "404 Not Found", &response_length);
+            if (!redirect) {
+                int response_length = 0;
+                char *response = build_http_response(filepath, "200 OK", &response_length);
 
                 if (response != NULL) {
                     write(client_fd, response, response_length);
                     free(response);
                 } else {
-                    const char *hard_fallback = "HTTP/1.1 404 Not Found\r\n"
-                                                "Content-Type: text/plain\r\n"
-                                                "Connection: close\r\n\r\n"
-                                                "404 - Resource not found.";
+                    response = build_http_response("www/404.html", "404 Not Found", &response_length);
 
-                    write(client_fd, hard_fallback, strlen(hard_fallback));
+                    if (response != NULL) {
+                        write(client_fd, response, response_length);
+                        free(response);
+                    } else {
+                        const char *hard_fallback = "HTTP/1.1 404 Not Found\r\n"
+                                                    "Content-Type: text/plain\r\n"
+                                                    "Connection: close\r\n\r\n"
+                                                    "404 - Resource not found.";
+
+                        write(client_fd, hard_fallback, strlen(hard_fallback));
+                    }
                 }
             }
         }

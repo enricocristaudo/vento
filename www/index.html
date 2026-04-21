@@ -5,18 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vento Web Server</title>
     <style>
-        body { font-family: system-ui, sans-serif; text-align: center; margin-top: 100px; background: #f4f4f9; color: #333;}
-        h1 { font-size: 3rem; color: #0078D7; }
-        .box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block;}
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #1a1a1a;
+            color: #d4d4d4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            font-weight: normal;
+        }
+        p {
+            font-size: 1.1rem;
+            max-width: 600px;
+            line-height: 1.6;
+            margin: 0.5rem 0;
+        }
+        a {
+            color: #4da6ff;
+            text-decoration: none;
+            border-bottom: 1px dashed #4da6ff;
+            transition: color 0.2s, border-bottom 0.2s;
+        }
+        a:hover {
+            color: #80c1ff;
+            border-bottom: 1px solid #80c1ff;
+        }
+        .footer {
+            margin-top: 3rem;
+            font-size: 0.95rem;
+            color: #888888;
+        }
     </style>
 </head>
 <body>
-    <div class="box">
-        <h1>🌬️ Vento is Alive!</h1>
-        <p>If you are seeing this, your custom C web server is successfully parsing HTTP requests,</p>
-        <p>reading files from the disk, and serving them blazing fast.</p>
-        <hr>
-        <small>Powered by pure C and POSIX Sockets</small>
+    <h1>~ vento ~</h1>
+    <p>The server is running successfully.</p>
+    <div class="footer">
+        <p>Made with <3 by <a href="https://github.com/enricocristaudo" target="_blank" rel="noopener noreferrer">ec</a></p>
     </div>
 </body>
 </html>
