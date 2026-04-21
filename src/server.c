@@ -5,27 +5,40 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include "../include/server.h"
 #include "../include/http.h"
 #include "../include/utils.h"
+#include "../include/logger.h"
 
 #define BUFFER_SIZE 4096
 
+typedef struct {
+    int client_fd;
+    char client_ip[INET_ADDRSTRLEN];
+} ClientInfo;
+
 // Thread handler to process individual HTTP connections
 void *handle_client(void *arg) {
-    int client_fd = *((int *)arg);
-    free(arg);
+    ClientInfo *info = (ClientInfo *)arg;
+    int client_fd = info->client_fd;
+    char client_ip[INET_ADDRSTRLEN];
+    strcpy(client_ip, info->client_ip);
+    free(info); // Free the dynamically allocated memory for the ClientInfo struct
 
     char buffer[BUFFER_SIZE] = {0};
     ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE);
-
+    
+    // Check if read was successful
     if (bytes_read > 0) {
         HttpRequest req = parse_http_request(buffer);
         char decoded_uri[256];
         url_decode(req.uri, decoded_uri);
 
-        printf("[%s] %s %s\n", req.method, decoded_uri, req.version);
+        int status_code = 200;
+
+        printf("[%s] %s (Decoded: %s) %s\n", req.method, req.uri, decoded_uri, req.version);
 
         if (!is_safe_uri(decoded_uri)) {
             printf("WARNING: Blocked potential path traversal attack: %s\n", decoded_uri);
@@ -36,6 +49,7 @@ void *handle_client(void *arg) {
                                     "403 - Forbidden.";
 
             write(client_fd, forbidden, strlen(forbidden));
+            status_code = 403;
         } else {
             char filepath[512] = "www";
             strcat(filepath, decoded_uri);
@@ -52,6 +66,7 @@ void *handle_client(void *arg) {
                              "Content-Length: 0\r\n"
                              "Connection: close\r\n\r\n", req.uri);
                     write(client_fd, redirect_response, strlen(redirect_response));
+                    status_code = 301;
                 } else {
                     strcat(filepath, "index.html");
                 }
@@ -64,23 +79,28 @@ void *handle_client(void *arg) {
                 if (response != NULL) {
                     write(client_fd, response, response_length);
                     free(response);
+                    status_code = 200;
                 } else {
                     response = build_http_response("www/404.html", "404 Not Found", &response_length);
 
                     if (response != NULL) {
                         write(client_fd, response, response_length);
                         free(response);
+                        status_code = 404;
                     } else {
                         const char *hard_fallback = "HTTP/1.1 404 Not Found\r\n"
                                                     "Content-Type: text/plain\r\n"
                                                     "Connection: close\r\n\r\n"
-                                                    "404 - Resource not found.";
+                                                    "404 - Resource not found. (Vento Hard Fallback)";
 
                         write(client_fd, hard_fallback, strlen(hard_fallback));
+                        status_code = 404;
                     }
                 }
             }
         }
+        
+        log_access(client_ip, req.method, decoded_uri, req.version, status_code);
     }
 
     close(client_fd);
@@ -128,22 +148,25 @@ void start_server(int port) {
          continue;
       }
 
-      int *new_sock = malloc(sizeof(int));
-      if (!new_sock) {
+      ClientInfo *client_info = malloc(sizeof(ClientInfo));
+      if (!client_info) {
          perror("Failed to allocate memory for new connection");
          close(client_fd);
          continue;
       }
-      *new_sock = client_fd;
+      client_info->client_fd = client_fd;
+      inet_ntop(AF_INET, &(address.sin_addr), client_info->client_ip, INET_ADDRSTRLEN);
 
       pthread_t thread_id;
-      if (pthread_create(&thread_id, NULL, handle_client, (void *)new_sock) < 0) {
+      if (pthread_create(&thread_id, NULL, handle_client, (void *)client_info) < 0) {
          perror("Could not create thread");
-         free(new_sock);
+         free(client_info);
          close(client_fd);
          continue;
       }
 
+      // Detach the thread so that its resources are automatically released
+      // back to the system without the need for another thread to join with it.
       pthread_detach(thread_id);
    }
 }
