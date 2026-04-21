@@ -1,6 +1,11 @@
 # ~ vento ~
 
-**vento** is a lightweight, blazing-fast, and multithreaded HTTP web server written from scratch in pure C. It utilizes raw POSIX sockets to serve static files with minimal overhead, making it an excellent educational resource for understanding how the web works under the hood.
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Language: C](https://img.shields.io/badge/Language-C-blue.svg)
+![Platform: Linux | macOS](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)
+![Build: Passing](https://img.shields.io/badge/Build-Passing-brightgreen.svg)
+
+**Vento** is a lightweight, blazing-fast, and multithreaded HTTP web server written from scratch in pure C. It utilizes raw POSIX sockets to serve static files with minimal overhead, making it an excellent educational resource for understanding how the web works under the hood.
 
 ## Features
 
@@ -69,7 +74,3 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 ## License
 
 This project is open-source and available under the [MIT License](LICENSE).
-
----
-
-<p align="center">Created by <strong>Enrico</strong></p>
