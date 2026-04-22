@@ -8,6 +8,7 @@ typedef struct {
     char query[256];
     char version[16];
     char body[2048];
+    int content_length;
 } HttpRequest;
 
 // Parses the raw request string from the socket into a structured format.

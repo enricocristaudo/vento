@@ -9,9 +9,9 @@
 HttpRequest parse_http_request(const char *raw_request) {
    HttpRequest req = {0};
    char full_uri[512] = {0};
-   
+
    sscanf(raw_request, "%15s %511s %15s", req.method, full_uri, req.version);
-   
+
    char *query_start = strchr(full_uri, '?');
    if (query_start) {
       *query_start = '\0';
@@ -24,6 +24,13 @@ HttpRequest parse_http_request(const char *raw_request) {
    const char *body_start = strstr(raw_request, "\r\n\r\n");
    if (body_start) {
       strncpy(req.body, body_start + 4, sizeof(req.body) - 1);
+   }
+
+   const char *content_length_header = strstr(raw_request, "Content-Length:");
+   if (content_length_header) {
+      sscanf(content_length_header, "Content-Length: %d", &req.content_length);
+   } else {
+      req.content_length = 0;
    }
 
    return req;

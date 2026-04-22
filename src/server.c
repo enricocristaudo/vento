@@ -40,10 +40,48 @@ void *handle_client(void *arg) {
     free(info);
 
     char buffer[BUFFER_SIZE] = {0};
-    ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE);
+    size_t total_read = 0;
+    int headers_found = 0;
 
-    if (bytes_read > 0) {
+    while (total_read < BUFFER_SIZE - 1) {
+        ssize_t bytes_read = read(client_fd, buffer + total_read, BUFFER_SIZE - 1 - total_read);
+        if (bytes_read <= 0) {
+            break;
+        }
+        total_read += bytes_read;
+        buffer[total_read] = '\0';
+
+        if (strstr(buffer, "\r\n\r\n") != NULL) {
+            headers_found = 1;
+            break;
+        }
+    }
+
+    if (headers_found) {
         HttpRequest req = parse_http_request(buffer);
+
+        char *body_start = strstr(buffer, "\r\n\r\n") + 4;
+        size_t headers_len = body_start - buffer;
+        size_t body_read = total_read - headers_len;
+
+        if (req.content_length > 0) {
+            size_t to_read = req.content_length;
+            if (to_read > sizeof(req.body) - 1) {
+                to_read = sizeof(req.body) - 1;
+            }
+
+            while (body_read < to_read && total_read < BUFFER_SIZE - 1) {
+                ssize_t bytes_read = read(client_fd, buffer + total_read, BUFFER_SIZE - 1 - total_read);
+                if (bytes_read <= 0) {
+                    break;
+                }
+                total_read += bytes_read;
+                body_read += bytes_read;
+                buffer[total_read] = '\0';
+            }
+            req = parse_http_request(buffer);
+        }
+
         char decoded_uri[256];
         url_decode(req.path, decoded_uri);
 
@@ -59,7 +97,7 @@ void *handle_client(void *arg) {
                                     "Connection: close\r\n\r\n"
                                     "403 - Forbidden.";
 
-            write(client_fd, forbidden, strlen(forbidden));
+            send_all(client_fd, forbidden, strlen(forbidden));
             status_code = 403;
         } else if (strcmp(req.method, "POST") == 0 && strcmp(decoded_uri, "/api/echo") == 0) {
             char response[4096];
@@ -69,7 +107,7 @@ void *handle_client(void *arg) {
                                         "Content-Length: %zu\r\n"
                                         "Connection: close\r\n\r\n"
                                         "%s", strlen(req.body), req.body);
-            write(client_fd, response, response_len);
+            send_all(client_fd, response, response_len);
             status_code = 200;
         } else {
             char filepath[512];
@@ -87,7 +125,7 @@ void *handle_client(void *arg) {
                              "Location: %s/\r\n"
                              "Content-Length: 0\r\n"
                              "Connection: close\r\n\r\n", req.path);
-                    write(client_fd, redirect_response, strlen(redirect_response));
+                    send_all(client_fd, redirect_response, strlen(redirect_response));
                     status_code = 301;
                 } else {
                     strcat(filepath, "index.html");
@@ -99,7 +137,7 @@ void *handle_client(void *arg) {
                 char *response = build_http_response(filepath, "200 OK", &response_length);
 
                 if (response != NULL) {
-                    write(client_fd, response, response_length);
+                    send_all(client_fd, response, response_length);
                     free(response);
                     status_code = 200;
                 } else {
@@ -108,7 +146,7 @@ void *handle_client(void *arg) {
                     response = build_http_response(error_path, "404 Not Found", &response_length);
 
                     if (response != NULL) {
-                        write(client_fd, response, response_length);
+                        send_all(client_fd, response, response_length);
                         free(response);
                         status_code = 404;
                     } else {
@@ -117,7 +155,7 @@ void *handle_client(void *arg) {
                                                     "Connection: close\r\n\r\n"
                                                     "404 - Resource not found. (Vento Hard Fallback)";
 
-                        write(client_fd, hard_fallback, strlen(hard_fallback));
+                        send_all(client_fd, hard_fallback, strlen(hard_fallback));
                         status_code = 404;
                     }
                 }

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include "../include/utils.h"
 
@@ -82,4 +83,17 @@ void url_decode(const char *src, char *dest) {
         }
     }
     *dest = '\0';
+}
+
+// Sends all data to a socket, handling partial writes.
+int send_all(int socket, const char *buffer, size_t length) {
+    size_t bytes_sent = 0;
+    while (bytes_sent < length) {
+        ssize_t n = write(socket, buffer + bytes_sent, length - bytes_sent);
+        if (n <= 0) {
+            return -1;
+        }
+        bytes_sent += n;
+    }
+    return 0;
 }

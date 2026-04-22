@@ -16,4 +16,7 @@ int is_safe_uri(const char *uri);
 // Decodes URL-encoded strings (e.g., "%2E" to ".", "%20" to " ").
 void url_decode(const char *src, char *dest);
 
+// Sends all data to a socket, handling partial writes.
+int send_all(int socket, const char *buffer, size_t length);
+
 #endif
