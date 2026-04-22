@@ -3,9 +3,11 @@
 
 // Struct to hold the parsed HTTP request data
 typedef struct {
-    char method[16];  // e.g., "GET", "POST"
-    char uri[256];    // e.g., "/index.html"
-    char version[16]; // e.g., "HTTP/1.1"
+    char method[16];
+    char path[256];
+    char query[256];
+    char version[16];
+    char body[2048];
 } HttpRequest;
 
 // Parses the raw request string from the socket into a structured format.

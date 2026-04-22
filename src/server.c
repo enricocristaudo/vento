@@ -25,20 +25,19 @@ void *handle_client(void *arg) {
     int client_fd = info->client_fd;
     char client_ip[INET_ADDRSTRLEN];
     strcpy(client_ip, info->client_ip);
-    free(info); // Free the dynamically allocated memory for the ClientInfo struct
+    free(info);
 
     char buffer[BUFFER_SIZE] = {0};
     ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE);
-    
-    // Check if read was successful
+
     if (bytes_read > 0) {
         HttpRequest req = parse_http_request(buffer);
         char decoded_uri[256];
-        url_decode(req.uri, decoded_uri);
+        url_decode(req.path, decoded_uri);
 
         int status_code = 200;
 
-        printf("[%s] %s (Decoded: %s) %s\n", req.method, req.uri, decoded_uri, req.version);
+        printf("[%s] %s %s\n", req.method, decoded_uri, req.version);
 
         if (!is_safe_uri(decoded_uri)) {
             printf("WARNING: Blocked potential path traversal attack: %s\n", decoded_uri);
@@ -50,6 +49,16 @@ void *handle_client(void *arg) {
 
             write(client_fd, forbidden, strlen(forbidden));
             status_code = 403;
+        } else if (strcmp(req.method, "POST") == 0 && strcmp(decoded_uri, "/api/echo") == 0) {
+            char response[4096];
+            int response_len = snprintf(response, sizeof(response),
+                                        "HTTP/1.1 200 OK\r\n"
+                                        "Content-Type: text/plain\r\n"
+                                        "Content-Length: %zu\r\n"
+                                        "Connection: close\r\n\r\n"
+                                        "%s", strlen(req.body), req.body);
+            write(client_fd, response, response_len);
+            status_code = 200;
         } else {
             char filepath[512] = "www";
             strcat(filepath, decoded_uri);
@@ -64,7 +73,7 @@ void *handle_client(void *arg) {
                              "HTTP/1.1 301 Moved Permanently\r\n"
                              "Location: %s/\r\n"
                              "Content-Length: 0\r\n"
-                             "Connection: close\r\n\r\n", req.uri);
+                             "Connection: close\r\n\r\n", req.path);
                     write(client_fd, redirect_response, strlen(redirect_response));
                     status_code = 301;
                 } else {
@@ -99,7 +108,7 @@ void *handle_client(void *arg) {
                 }
             }
         }
-        
+
         log_access(client_ip, req.method, decoded_uri, req.version, status_code);
     }
 

@@ -5,9 +5,27 @@
 #include "../include/utils.h"
 
 // Parses the first line of a raw HTTP request into a structured HttpRequest.
+// Extracts method, path, query parameters, version, and the payload body.
 HttpRequest parse_http_request(const char *raw_request) {
    HttpRequest req = {0};
-   sscanf(raw_request, "%15s %255s %15s", req.method, req.uri, req.version);
+   char full_uri[512] = {0};
+   
+   sscanf(raw_request, "%15s %511s %15s", req.method, full_uri, req.version);
+   
+   char *query_start = strchr(full_uri, '?');
+   if (query_start) {
+      *query_start = '\0';
+      strncpy(req.path, full_uri, sizeof(req.path) - 1);
+      strncpy(req.query, query_start + 1, sizeof(req.query) - 1);
+   } else {
+      strncpy(req.path, full_uri, sizeof(req.path) - 1);
+   }
+
+   const char *body_start = strstr(raw_request, "\r\n\r\n");
+   if (body_start) {
+      strncpy(req.body, body_start + 4, sizeof(req.body) - 1);
+   }
+
    return req;
 }
 
