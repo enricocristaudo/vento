@@ -32,7 +32,7 @@ To build and run Vento, you need a UNIX-like environment (Linux, macOS, or WSL o
 Clone the repository and run `make` in the root directory:
 
 ```bash
-git clone https://github.com/enrico/vento.git
+git clone https://github.com/nnevskij/vento
 cd vento
 make
 ```
@@ -91,7 +91,7 @@ make clean
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/enrico/vento/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/nnevskij/vento/issues).
 
 ## License
 
