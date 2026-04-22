@@ -7,16 +7,26 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <signal.h>
 #include "../include/server.h"
 #include "../include/http.h"
 #include "../include/utils.h"
 #include "../include/logger.h"
+#include "../include/config.h"
 
 #define BUFFER_SIZE 4096
+
+volatile sig_atomic_t server_running = 1;
+
+void handle_signal(int sig) {
+    (void)sig;
+    server_running = 0;
+}
 
 typedef struct {
     int client_fd;
     char client_ip[INET_ADDRSTRLEN];
+    char document_root[256];
 } ClientInfo;
 
 // Thread handler to process individual HTTP connections
@@ -24,7 +34,9 @@ void *handle_client(void *arg) {
     ClientInfo *info = (ClientInfo *)arg;
     int client_fd = info->client_fd;
     char client_ip[INET_ADDRSTRLEN];
+    char document_root[256];
     strcpy(client_ip, info->client_ip);
+    strcpy(document_root, info->document_root);
     free(info);
 
     char buffer[BUFFER_SIZE] = {0};
@@ -60,7 +72,8 @@ void *handle_client(void *arg) {
             write(client_fd, response, response_len);
             status_code = 200;
         } else {
-            char filepath[512] = "www";
+            char filepath[512];
+            strcpy(filepath, document_root);
             strcat(filepath, decoded_uri);
 
             struct stat path_stat;
@@ -90,7 +103,9 @@ void *handle_client(void *arg) {
                     free(response);
                     status_code = 200;
                 } else {
-                    response = build_http_response("www/404.html", "404 Not Found", &response_length);
+                    char error_path[512];
+                    snprintf(error_path, sizeof(error_path), "%s/404.html", document_root);
+                    response = build_http_response(error_path, "404 Not Found", &response_length);
 
                     if (response != NULL) {
                         write(client_fd, response, response_length);
@@ -119,7 +134,14 @@ void *handle_client(void *arg) {
 
 // Initializes the socket, binds it to the specified port, and enters
 // an infinite loop to accept and handle incoming HTTP connections.
-void start_server(int port) {
+void start_server(ServerConfig config) {
+   struct sigaction sa;
+   sa.sa_handler = handle_signal;
+   sa.sa_flags = 0; // Important: Do NOT use SA_RESTART, so accept() can be interrupted
+   sigemptyset(&sa.sa_mask);
+   sigaction(SIGINT, &sa, NULL);
+   sigaction(SIGTERM, &sa, NULL);
+
    int server_fd, client_fd;
    struct sockaddr_in address;
    int opt = 1;
@@ -137,7 +159,7 @@ void start_server(int port) {
 
    address.sin_family = AF_INET;
    address.sin_addr.s_addr = INADDR_ANY;
-   address.sin_port = htons(port);
+   address.sin_port = htons(config.port);
 
    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
       perror("Bind failed");
@@ -149,10 +171,11 @@ void start_server(int port) {
       exit(EXIT_FAILURE);
    }
 
-   printf("Vento is blowing at [http://localhost:%d]\n\n", port);
+   printf("Vento is blowing at [http://localhost:%d]\n\n", config.port);
 
-   while (1) {
+   while (server_running) {
       if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+         if (!server_running) break;
          perror("Accept failed");
          continue;
       }
@@ -165,6 +188,8 @@ void start_server(int port) {
       }
       client_info->client_fd = client_fd;
       inet_ntop(AF_INET, &(address.sin_addr), client_info->client_ip, INET_ADDRSTRLEN);
+      strncpy(client_info->document_root, config.document_root, sizeof(client_info->document_root) - 1);
+      client_info->document_root[sizeof(client_info->document_root) - 1] = '\0';
 
       pthread_t thread_id;
       if (pthread_create(&thread_id, NULL, handle_client, (void *)client_info) < 0) {
@@ -178,4 +203,7 @@ void start_server(int port) {
       // back to the system without the need for another thread to join with it.
       pthread_detach(thread_id);
    }
+
+   printf("\nShutting down Vento gracefully...\n");
+   close(server_fd);
 }
