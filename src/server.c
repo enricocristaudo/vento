@@ -6,7 +6,6 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/event.h>
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -15,6 +14,7 @@
 #include "../include/utils.h"
 #include "../include/logger.h"
 #include "../include/config.h"
+#include "../include/event.h"
 
 #define MAX_EVENTS 1024
 #define MAX_FDS 8192
@@ -51,7 +51,7 @@ void free_client(int fd) {
     }
 }
 
-// Starts the web server using kqueue for asynchronous event handling
+// Starts the web server using asynchronous event handling
 void start_server(ServerConfig config) {
     struct sigaction sa;
     sa.sa_handler = handle_signal;
@@ -92,16 +92,14 @@ void start_server(ServerConfig config) {
 
     init_clients();
 
-    int kq = kqueue();
-    if (kq == -1) {
-        perror("kqueue failed");
+    int efd = event_init();
+    if (efd == -1) {
+        perror("event_init failed");
         exit(EXIT_FAILURE);
     }
 
-    struct kevent ev_set;
-    EV_SET(&ev_set, server_fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-    if (kevent(kq, &ev_set, 1, NULL, 0, NULL) == -1) {
-        perror("kevent register server_fd failed");
+    if (event_add(efd, server_fd, 1) == -1) {
+        perror("event_add server_fd failed");
         exit(EXIT_FAILURE);
     }
 
@@ -115,20 +113,20 @@ void start_server(ServerConfig config) {
            "Press Ctrl+C to shut down\n\n",
            config.port, config.document_root);
 
-    struct kevent ev_list[MAX_EVENTS];
+    struct VentoEvent ev_list[MAX_EVENTS];
 
     while (server_running) {
-        int nev = kevent(kq, NULL, 0, ev_list, MAX_EVENTS, NULL);
+        int nev = event_wait(efd, ev_list, MAX_EVENTS);
         if (nev < 0) {
             if (errno == EINTR) continue;
-            perror("kevent wait failed");
+            perror("event_wait failed");
             break;
         }
 
         for (int i = 0; i < nev; i++) {
-            int fd = ev_list[i].ident;
+            int fd = ev_list[i].fd;
 
-            if (ev_list[i].flags & EV_EOF) {
+            if (ev_list[i].type == EVENT_ERROR) {
                 free_client(fd);
                 continue;
             }
@@ -166,11 +164,9 @@ void start_server(ServerConfig config) {
                     strncpy(clients[client_fd].document_root, config.document_root, sizeof(clients[client_fd].document_root) - 1);
                     clients[client_fd].document_root[sizeof(clients[client_fd].document_root) - 1] = '\0';
 
-                    struct kevent ev;
-                    EV_SET(&ev, client_fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-                    kevent(kq, &ev, 1, NULL, 0, NULL);
+                    event_add(efd, client_fd, 0);
                 }
-            } else if (ev_list[i].filter == EVFILT_READ) {
+            } else if (ev_list[i].type == EVENT_READ) {
                 struct ClientState *client = &clients[fd];
                 if (client->client_fd == -1) continue;
 
@@ -288,10 +284,7 @@ void start_server(ServerConfig config) {
                                 log_access(client->client_ip, req.method, decoded_uri, req.version, status_code);
 
                                 client->status = STATE_WRITING;
-                                struct kevent ev[2];
-                                EV_SET(&ev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-                                EV_SET(&ev[1], fd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
-                                kevent(kq, ev, 2, NULL, 0, NULL);
+                                event_mod(efd, fd, EVENT_WRITE);
                             }
                         }
                     } else if (bytes_read == 0) {
@@ -304,7 +297,7 @@ void start_server(ServerConfig config) {
                 } else {
                     free_client(fd);
                 }
-            } else if (ev_list[i].filter == EVFILT_WRITE) {
+            } else if (ev_list[i].type == EVENT_WRITE) {
                 struct ClientState *client = &clients[fd];
                 if (client->client_fd == -1) continue;
 
@@ -328,7 +321,7 @@ void start_server(ServerConfig config) {
 
     printf("\nShutting down Vento...\n");
     close(server_fd);
-    close(kq);
+    close(efd);
 
     for (int i = 0; i < MAX_FDS; i++) {
         free_client(i);
