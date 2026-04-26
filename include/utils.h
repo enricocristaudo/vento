@@ -19,4 +19,7 @@ void url_decode(const char *src, char *dest);
 // Sends all data to a socket, handling partial writes.
 int send_all(int socket, const char *buffer, size_t length);
 
+// Sets a file descriptor to non-blocking mode.
+int set_nonblocking(int fd);
+
 #endif
